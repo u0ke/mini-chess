@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Chess</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>Mini Chess</h1>
+        <p>Practice against a simple chess bot</p>
+      </div>
+      <button id="newGame" class="secondary">New game</button>
+    </header>
+
+    <section class="controls">
+      <label for="elo">Bot level</label>
+      <select id="elo">
+        <option value="100">100 ELO</option>
+        <option value="250">250 ELO</option>
+        <option value="400" selected>400 ELO</option>
+        <option value="500">500 ELO</option>
+        <option value="600">600 ELO</option>
+        <option value="750">750 ELO</option>
+        <option value="900">900 ELO</option>
+      </select>
+      <button id="startGame">Start game</button>
+    </section>
+
+    <section class="game-layout">
+      <div>
+        <div id="status" class="status">Connecting...</div>
+        <div id="board" class="board" aria-label="Chess board"></div>
+      </div>
+
+      <aside class="panel">
+        <h2>Game</h2>
+        <div class="info"><span>Opponent</span><strong id="opponent">400 ELO</strong></div>
+        <div class="info"><span>Turn</span><strong id="turn">White</strong></div>
+        <div class="info"><span>Moves</span><strong id="moveCount">0</strong></div>
+        <h3>Move history</h3>
+        <ol id="history" class="history"></ol>
+      </aside>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
