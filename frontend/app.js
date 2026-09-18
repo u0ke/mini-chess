@@ -1,4 +1,5 @@
 const API = "http://localhost:8080";
+
 const boardEl = document.getElementById("board");
 const statusEl = document.getElementById("status");
 const historyEl = document.getElementById("history");
@@ -9,138 +10,394 @@ const eloEl = document.getElementById("elo");
 
 let state = null;
 let selected = null;
+let selectedMoves = [];
 
 const pieces = {
-  wK: "♔", wQ: "♕", wR: "♖", wB: "♗", wN: "♘", wP: "♙",
-  bK: "♚", bQ: "♛", bR: "♜", bB: "♝", bN: "♞", bP: "♟"
+    wK: "♔",
+    wQ: "♕",
+    wR: "♖",
+    wB: "♗",
+    wN: "♘",
+    wP: "♙",
+
+    bK: "♚",
+    bQ: "♛",
+    bR: "♜",
+    bB: "♝",
+    bN: "♞",
+    bP: "♟"
 };
 
 async function request(path, options = {}) {
-  const response = await fetch(API + path, {
-    headers: { "Content-Type": "application/json" },
-    ...options
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
+    const response = await fetch(API + path, {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+        }
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error || "Request failed");
+    }
+
+    return response.json();
 }
 
 async function loadGame() {
-  try {
-    state = await request("/state");
-    render();
-  } catch (e) {
-    statusEl.textContent = "Start the Java backend first.";
-  }
+    try {
+        state = await request("/state");
+
+        selected = null;
+        selectedMoves = [];
+
+        render();
+    } catch (error) {
+        console.error(error);
+
+        statusEl.textContent =
+            "Java backend is not running. Start ChessServer.java first.";
+    }
 }
 
 function render() {
-  boardEl.innerHTML = "";
+    if (!state) return;
 
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const sq = document.createElement("button");
-      sq.className = `square ${(row + col) % 2 === 0 ? "light" : "dark"}`;
+    boardEl.innerHTML = "";
 
-      const piece = state.board[row][col];
-      if (piece) {
-        const span = document.createElement("span");
-        span.className = "piece";
-        span.textContent = pieces[piece];
-        sq.appendChild(span);
-      }
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
 
-      const coord = `${row},${col}`;
-      if (selected === coord) sq.classList.add("selected");
+            const square = document.createElement("button");
 
-      if (selected && state.legalMoves.some(m => m.toRow === row && m.toCol === col)) {
-        sq.classList.add(piece ? "capture" : "legal");
-      }
+            square.type = "button";
 
-      sq.addEventListener("click", () => clickSquare(row, col));
-      boardEl.appendChild(sq);
+            square.className =
+                `square ${(row + col) % 2 === 0 ? "light" : "dark"}`;
+
+            const piece = state.board[row][col];
+
+            /*
+             * Selected square
+             */
+            if (
+                selected &&
+                selected.row === row &&
+                selected.col === col
+            ) {
+                square.classList.add("selected");
+            }
+
+            /*
+             * Legal destination
+             */
+            const legalMove = selectedMoves.find(
+                move =>
+                    Number(move.toRow) === row &&
+                    Number(move.toCol) === col
+            );
+
+            if (legalMove) {
+
+                if (piece) {
+                    square.classList.add("capture");
+                } else {
+                    square.classList.add("legal");
+                }
+            }
+
+            /*
+             * Piece
+             */
+            if (piece) {
+                const span = document.createElement("span");
+
+                span.className = "piece";
+
+                span.textContent = pieces[piece] || "?";
+
+                square.appendChild(span);
+            }
+
+            square.addEventListener("click", () => {
+                handleSquareClick(row, col);
+            });
+
+            boardEl.appendChild(square);
+        }
     }
-  }
 
-  opponentEl.textContent = `${state.elo} ELO`;
-  turnEl.textContent = state.turn === "w" ? "White" : "Black";
-  moveCountEl.textContent = state.moves.length;
-  historyEl.innerHTML = state.moves.map((m, i) => `<li>${i + 1}. ${escapeHtml(m)}</li>`).join("");
+    opponentEl.textContent = `${state.elo} ELO`;
 
-  if (state.gameOver) {
-    statusEl.textContent = state.result;
-  } else if (state.turn === "w") {
-    statusEl.textContent = "Your turn — click a piece, then its destination.";
-  } else {
-    statusEl.textContent = "Bot is thinking...";
-  }
-}
+    turnEl.textContent =
+        state.turn === "w"
+            ? "White"
+            : "Black";
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
-  }[c]));
-}
+    moveCountEl.textContent = state.moves.length;
 
-async function clickSquare(row, col) {
-  if (!state || state.gameOver || state.turn !== "w") return;
+    historyEl.innerHTML = "";
 
-  const coord = `${row},${col}`;
+    state.moves.forEach((move, index) => {
 
-  if (!selected) {
-    if (state.board[row][col]?.startsWith("w")) {
-      selected = coord;
-      state.legalMoves = await request(`/legal?row=${row}&col=${col}`);
-      render();
-    }
-    return;
-  }
+        const li = document.createElement("li");
 
-  if (selected === coord) {
-    selected = null;
-    state.legalMoves = [];
-    render();
-    return;
-  }
+        li.textContent = `${index + 1}. ${move}`;
 
-  const [fromRow, fromCol] = selected.split(",").map(Number);
-  const legal = state.legalMoves.find(m => m.toRow === row && m.toCol === col);
-
-  if (!legal) {
-    if (state.board[row][col]?.startsWith("w")) {
-      selected = coord;
-      state.legalMoves = await request(`/legal?row=${row}&col=${col}`);
-      render();
-    }
-    return;
-  }
-
-  selected = null;
-  state.legalMoves = [];
-
-  try {
-    state = await request("/move", {
-      method: "POST",
-      body: JSON.stringify({
-        fromRow, fromCol, toRow: row, toCol: col
-      })
+        historyEl.appendChild(li);
     });
-    render();
-  } catch (e) {
-    statusEl.textContent = "Invalid move.";
-    await loadGame();
-  }
+
+    if (state.gameOver) {
+
+        statusEl.textContent =
+            state.result || "Game over";
+
+    } else if (state.turn === "w") {
+
+        if (selected) {
+            statusEl.textContent =
+                `Selected ${pieceName(state.board[selected.row][selected.col])}. Choose a destination.`;
+        } else {
+            statusEl.textContent =
+                "Your turn — select a piece.";
+        }
+
+    } else {
+
+        statusEl.textContent =
+            "Bot is thinking...";
+    }
+}
+
+function pieceName(piece) {
+
+    const names = {
+        wK: "White King",
+        wQ: "White Queen",
+        wR: "White Rook",
+        wB: "White Bishop",
+        wN: "White Knight",
+        wP: "White Pawn",
+
+        bK: "Black King",
+        bQ: "Black Queen",
+        bR: "Black Rook",
+        bN: "Black Knight",
+        bP: "Black Pawn"
+    };
+
+    return names[piece] || "piece";
+}
+
+async function handleSquareClick(row, col) {
+
+    if (!state) return;
+
+    if (state.gameOver) return;
+
+    if (state.turn !== "w") return;
+
+    const clickedPiece = state.board[row][col];
+
+    /*
+     * Nothing selected yet
+     */
+    if (!selected) {
+
+        if (!clickedPiece) {
+            return;
+        }
+
+        /*
+         * Only white pieces can be selected
+         */
+        if (!clickedPiece.startsWith("w")) {
+            statusEl.textContent =
+                "It's your turn. Select a white piece.";
+
+            return;
+        }
+
+        await selectPiece(row, col);
+
+        return;
+    }
+
+    /*
+     * Clicking the same piece deselects it
+     */
+    if (
+        selected.row === row &&
+        selected.col === col
+    ) {
+
+        selected = null;
+        selectedMoves = [];
+
+        render();
+
+        return;
+    }
+
+    /*
+     * Clicking another white piece switches selection
+     */
+    if (
+        clickedPiece &&
+        clickedPiece.startsWith("w")
+    ) {
+
+        await selectPiece(row, col);
+
+        return;
+    }
+
+    /*
+     * Check if destination is legal
+     */
+    const legalMove = selectedMoves.find(
+        move =>
+            Number(move.toRow) === row &&
+            Number(move.toCol) === col
+    );
+
+    if (!legalMove) {
+
+        statusEl.textContent =
+            "That piece cannot move there.";
+
+        return;
+    }
+
+    /*
+     * Save starting position
+     */
+    const fromRow = selected.row;
+    const fromCol = selected.col;
+
+    /*
+     * Clear selection immediately
+     */
+    selected = null;
+    selectedMoves = [];
+
+    try {
+
+        state = await request("/move", {
+            method: "POST",
+
+            body: JSON.stringify({
+                fromRow: fromRow,
+                fromCol: fromCol,
+
+                toRow: row,
+                toCol: col
+            })
+        });
+
+        render();
+
+    } catch (error) {
+
+        console.error(error);
+
+        statusEl.textContent =
+            "Invalid move.";
+
+        await loadGame();
+    }
+}
+
+async function selectPiece(row, col) {
+
+    const piece = state.board[row][col];
+
+    if (!piece || !piece.startsWith("w")) {
+        return;
+    }
+
+    try {
+
+        const moves = await request(
+            `/legal?row=${row}&col=${col}`
+        );
+
+        selected = {
+            row,
+            col
+        };
+
+        selectedMoves =
+            Array.isArray(moves)
+                ? moves
+                : [];
+
+        render();
+
+        /*
+         * Helpful message when a bishop is blocked
+         */
+        if (
+            piece === "wB" &&
+            selectedMoves.length === 0
+        ) {
+
+            statusEl.textContent =
+                "This bishop is blocked. Move the pawn in front of it first.";
+
+            return;
+        }
+
+        if (selectedMoves.length === 0) {
+
+            statusEl.textContent =
+                "This piece has no legal moves.";
+
+        }
+    } catch (error) {
+
+        console.error(error);
+
+        statusEl.textContent =
+            "Could not calculate legal moves.";
+    }
 }
 
 async function startGame() {
-  selected = null;
-  const elo = Number(eloEl.value);
-  state = await request("/new", {
-    method: "POST",
-    body: JSON.stringify({ elo })
-  });
-  render();
+
+    try {
+
+        selected = null;
+        selectedMoves = [];
+
+        const elo = Number(eloEl.value);
+
+        state = await request("/new", {
+            method: "POST",
+
+            body: JSON.stringify({
+                elo
+            })
+        });
+
+        render();
+
+    } catch (error) {
+
+        console.error(error);
+
+        statusEl.textContent =
+            "Could not start a new game.";
+    }
 }
 
-document.getElementById("newGame").addEventListener("click", startGame);
-document.getElementById("startGame").addEventListener("click", startGame);
+document
+    .getElementById("newGame")
+    .addEventListener("click", startGame);
+
+document
+    .getElementById("startGame")
+    .addEventListener("click", startGame);
+
 loadGame();
