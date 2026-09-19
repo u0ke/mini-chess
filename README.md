@@ -1,4 +1,4 @@
-# Mini Chess
+# Mini Chess!
 
 A small chess practice game with:
 
